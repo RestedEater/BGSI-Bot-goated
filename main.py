@@ -18,6 +18,9 @@ last_alert_by = {}  # name -> last sent timestamp
 @client.event
 async def on_ready():
     print(f"Logged in as {client.user}. Watching: {', '.join(WATCH_NAMES) or '(none)'}")
+    print(f"Source Channel ID: {SOURCE_CHANNEL_ID}")
+    print(f"Alert Channel ID: {ALERT_CHANNEL_ID}")
+    print(f"Cooldown: {COOLDOWN_SECONDS} seconds")
 
 def extract_hatched_by(embed: discord.Embed):
     # First, look through embed fields
@@ -34,6 +37,14 @@ def extract_hatched_by(embed: discord.Embed):
 
 @client.event
 async def on_message(message: discord.Message):
+    # Debug: Log all messages in watched channels
+    if SOURCE_CHANNEL_ID == 0 or message.channel.id == SOURCE_CHANNEL_ID:
+        print(f"Message in channel {message.channel.id}: {message.content[:50]}...")
+        if message.embeds:
+            print(f"  Has {len(message.embeds)} embed(s)")
+            for i, embed in enumerate(message.embeds):
+                print(f"  Embed {i} title: {embed.title}")
+    
     # Ignore own messages
     if message.author == client.user:
         return
@@ -46,11 +57,16 @@ async def on_message(message: discord.Message):
 
     for e in message.embeds:
         title = (e.title or "").lower()
+        print(f"  Checking embed title: '{title}'")
         if "new hatch" not in title:
             continue
+        print("  Found 'new hatch' in title!")
         who = extract_hatched_by(e)
+        print(f"  Hatched by: '{who}'")
         if not who or who.lower() == "n/a":
+            print("  No valid hatcher found, skipping")
             continue
+        print(f"  Checking if '{who.lower()}' is in watch list: {WATCH_NAMES}")
         if who.lower() in WATCH_NAMES:
             now = time.time()
             if COOLDOWN_SECONDS > 0 and now - last_alert_by.get(who.lower(), 0) < COOLDOWN_SECONDS:
