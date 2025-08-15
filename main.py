@@ -63,8 +63,8 @@ async def on_message(message: discord.Message):
         print("  Found 'new hatch' in title!")
         who = extract_hatched_by(e)
         print(f"  Hatched by: '{who}'")
-        if not who or who.lower() == "n/a":
-            print("  No valid hatcher found, skipping")
+        if not who:
+            print("  No hatcher found, skipping")
             continue
         print(f"  Checking if '{who.lower()}' is in watch list: {WATCH_NAMES}")
         if who.lower() in [name.lower() for name in WATCH_NAMES]:
