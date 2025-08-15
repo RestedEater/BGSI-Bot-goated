@@ -1,0 +1,99 @@
+3) Host it free (Replit)
+
+You’ll just paste code and fill a few boxes.
+
+Go to https://replit.com → Create Repl → pick Python.
+
+Create a file named requirements.txt with this line:
+
+discord.py==2.3.2
+
+
+Open the Secrets / Environment variables panel (🔒 icon) and add:
+
+DISCORD_TOKEN = (paste the token from step 1)
+
+WATCH_NAMES = (comma-separated names exactly as they appear in the embed, e.g.:)
+RumbleModMail,SomeOtherUser
+
+SOURCE_CHANNEL_ID = (the BGSI channel ID number)
+
+ALERT_CHANNEL_ID = (the channel ID where you want @everyone pings)
+
+(Optional) COOLDOWN_SECONDS = 120 (prevents spam if multiple messages hit)
+
+Replace the entire main.py with this code and click Run:
+
+import os, time, discord
+
+TOKEN = os.getenv("DISCORD_TOKEN")
+WATCH_NAMES = {n.strip().lower() for n in os.getenv("WATCH_NAMES","").split(",") if n.strip()}
+SOURCE_CHANNEL_ID = int(os.getenv("SOURCE_CHANNEL_ID","0"))
+ALERT_CHANNEL_ID = int(os.getenv("ALERT_CHANNEL_ID","0"))
+COOLDOWN_SECONDS = int(os.getenv("COOLDOWN_SECONDS","120"))
+
+intents = discord.Intents.default()
+intents.guilds = True
+intents.messages = True
+intents.message_content = True
+
+client = discord.Client(intents=intents)
+last_alert_by = {}  # name -> last sent timestamp
+
+@client.event
+async def on_ready():
+    print(f"Logged in as {client.user}. Watching: {', '.join(WATCH_NAMES) or '(none)'}")
+
+def extract_hatched_by(embed: discord.Embed):
+    # First, look through embed fields
+    for f in embed.fields:
+        if (f.name or "").lower().startswith("hatched by"):
+            return (f.value or "").strip().strip("* _`")
+    # Fallback: search description text
+    desc = (embed.description or "")
+    m = desc.lower().find("hatched by:")
+    if m != -1:
+        after = desc[m+len("hatched by:"):]
+        return after.splitlines()[0].strip().strip("* _`")
+    return None
+
+@client.event
+async def on_message(message: discord.Message):
+    # Ignore own messages
+    if message.author == client.user:
+        return
+    # Only watch the specific source channel (if provided)
+    if SOURCE_CHANNEL_ID and message.channel.id != SOURCE_CHANNEL_ID:
+        return
+    # We only care about embedded BGSI posts
+    if not message.embeds:
+        return
+
+    for e in message.embeds:
+        title = (e.title or "").lower()
+        if "new hatch" not in title:
+            continue
+        who = extract_hatched_by(e)
+        if not who or who.lower() == "n/a":
+            continue
+        if who.lower() in WATCH_NAMES:
+            now = time.time()
+            if now - last_alert_by.get(who.lower(), 0) < COOLDOWN_SECONDS:
+                return  # cooldown
+            last_alert_by[who.lower()] = now
+
+            pet = (e.title or "New Hatch").replace("New Hatch:", "").strip()
+            channel = message.guild.get_channel(ALERT_CHANNEL_ID) or client.get_channel(ALERT_CHANNEL_ID)
+            if not channel:
+                print("Alert channel not found or bot lacks access.")
+                return
+            await channel.send(
+                "@everyone Match! **{}** just hatched **{}**.".format(who, pet),
+                allowed_mentions=discord.AllowedMentions(everyone=True)
+            )
+            return
+
+client.run(TOKEN)
+
+
+Keep the Replit tab running for the bot to stay online. If you need 24/7, use a free host like Railway or Render later; the same code works there.
