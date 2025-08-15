@@ -67,7 +67,7 @@ async def on_message(message: discord.Message):
             print("  No valid hatcher found, skipping")
             continue
         print(f"  Checking if '{who.lower()}' is in watch list: {WATCH_NAMES}")
-        if who.lower() in WATCH_NAMES:
+        if who.lower() in [name.lower() for name in WATCH_NAMES]:
             now = time.time()
             if COOLDOWN_SECONDS > 0 and now - last_alert_by.get(who.lower(), 0) < COOLDOWN_SECONDS:
                 return  # cooldown
