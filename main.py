@@ -1,46 +1,71 @@
 
-import discord
-from discord.ext import commands
-import os
+import os, time, discord
 
-# Create bot instance with intents
+TOKEN = os.getenv("DISCORD_TOKEN")
+WATCH_NAMES = {n.strip().lower() for n in os.getenv("WATCH_NAMES","").split(",") if n.strip()}
+SOURCE_CHANNEL_ID = int(os.getenv("SOURCE_CHANNEL_ID","0"))
+ALERT_CHANNEL_ID = int(os.getenv("ALERT_CHANNEL_ID","0"))
+COOLDOWN_SECONDS = int(os.getenv("COOLDOWN_SECONDS","0"))  # No cooldown as requested
+
 intents = discord.Intents.default()
+intents.guilds = True
+intents.messages = True
 intents.message_content = True
-bot = commands.Bot(command_prefix='!', intents=intents)
 
-@bot.event
+client = discord.Client(intents=intents)
+last_alert_by = {}  # name -> last sent timestamp
+
+@client.event
 async def on_ready():
-    print(f'{bot.user} has connected to Discord!')
-    print(f'Bot is in {len(bot.guilds)} guilds')
+    print(f"Logged in as {client.user}. Watching: {', '.join(WATCH_NAMES) or '(none)'}")
 
-@bot.command(name='hello')
-async def hello(ctx):
-    """Simple hello command"""
-    await ctx.send(f'Hello {ctx.author.mention}!')
+def extract_hatched_by(embed: discord.Embed):
+    # First, look through embed fields
+    for f in embed.fields:
+        if (f.name or "").lower().startswith("hatched by"):
+            return (f.value or "").strip().strip("* _`")
+    # Fallback: search description text
+    desc = (embed.description or "")
+    m = desc.lower().find("hatched by:")
+    if m != -1:
+        after = desc[m+len("hatched by:"):]
+        return after.splitlines()[0].strip().strip("* _`")
+    return None
 
-@bot.command(name='ping')
-async def ping(ctx):
-    """Check bot latency"""
-    latency = round(bot.latency * 1000)
-    await ctx.send(f'Pong! Latency: {latency}ms')
+@client.event
+async def on_message(message: discord.Message):
+    # Ignore own messages
+    if message.author == client.user:
+        return
+    # Only watch the specific source channel (if provided)
+    if SOURCE_CHANNEL_ID and message.channel.id != SOURCE_CHANNEL_ID:
+        return
+    # We only care about embedded BGSI posts
+    if not message.embeds:
+        return
 
-@bot.command(name='info')
-async def info(ctx):
-    """Display bot information"""
-    embed = discord.Embed(
-        title="Bot Information",
-        description="A simple Discord bot built with discord.py",
-        color=0x00ff00
-    )
-    embed.add_field(name="Servers", value=len(bot.guilds), inline=True)
-    embed.add_field(name="Users", value=len(bot.users), inline=True)
-    await ctx.send(embed=embed)
+    for e in message.embeds:
+        title = (e.title or "").lower()
+        if "new hatch" not in title:
+            continue
+        who = extract_hatched_by(e)
+        if not who or who.lower() == "n/a":
+            continue
+        if who.lower() in WATCH_NAMES:
+            now = time.time()
+            if COOLDOWN_SECONDS > 0 and now - last_alert_by.get(who.lower(), 0) < COOLDOWN_SECONDS:
+                return  # cooldown (disabled per your request)
+            last_alert_by[who.lower()] = now
 
-if __name__ == '__main__':
-    # Get token from environment variable
-    token = os.getenv('DISCORD_TOKEN')
-    if not token:
-        print("Error: DISCORD_TOKEN environment variable not set!")
-        print("Please add your Discord bot token to the Secrets tab.")
-    else:
-        bot.run(token)
+            pet = (e.title or "New Hatch").replace("New Hatch:", "").strip()
+            channel = message.guild.get_channel(ALERT_CHANNEL_ID) or client.get_channel(ALERT_CHANNEL_ID)
+            if not channel:
+                print("Alert channel not found or bot lacks access.")
+                return
+            await channel.send(
+                "@everyone Match! **{}** just hatched **{}**.".format(who, pet),
+                allowed_mentions=discord.AllowedMentions(everyone=True)
+            )
+            return
+
+client.run(TOKEN)
