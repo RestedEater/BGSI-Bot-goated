@@ -5,7 +5,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 WATCH_NAMES = {n.strip().lower() for n in os.getenv("WATCH_NAMES","").split(",") if n.strip()}
 SOURCE_CHANNEL_ID = int(os.getenv("SOURCE_CHANNEL_ID","0"))
 ALERT_CHANNEL_ID = int(os.getenv("ALERT_CHANNEL_ID","0"))
-COOLDOWN_SECONDS = int(os.getenv("COOLDOWN_SECONDS","0"))  # No cooldown as requested
+COOLDOWN_SECONDS = int(os.getenv("COOLDOWN_SECONDS","120"))
 
 intents = discord.Intents.default()
 intents.guilds = True
@@ -54,7 +54,7 @@ async def on_message(message: discord.Message):
         if who.lower() in WATCH_NAMES:
             now = time.time()
             if COOLDOWN_SECONDS > 0 and now - last_alert_by.get(who.lower(), 0) < COOLDOWN_SECONDS:
-                return  # cooldown (disabled per your request)
+                return  # cooldown
             last_alert_by[who.lower()] = now
 
             pet = (e.title or "New Hatch").replace("New Hatch:", "").strip()
